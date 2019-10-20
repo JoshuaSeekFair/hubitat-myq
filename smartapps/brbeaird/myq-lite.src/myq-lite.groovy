@@ -17,7 +17,6 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  */
-include 'asynchttp_v1'
 
 String appVersion() { return "3.1.0" }
 String appModified() { return "2019-10-18"}
@@ -85,13 +84,12 @@ def mainPage() {
         appInfoSect()
         def devs = refreshChildren()
         section("MyQ Account"){
-            paragraph title: "", "Email: ${settings.username}\nGateway Brand: ${settings.brand}"
+            paragraph title: "", "Email: ${settings.username}\n"
             href "prefLogIn", title: "", description: "Tap to modify account", params: [nextPageName: "mainPage"]
         }
         section("Connected Devices") {
         	paragraph title: "", "${devs?.size() ? devs?.join("\n") : "No MyQ Devices Connected"}"
             href "prefListDevices", title: "", description: "Tap to modify devices"
-            input "prefDoorErrorNotify", "bool", required: false, defaultValue: true, title: "Notify on door command errors"
         }
         section("App and Handler Versions"){
             state.currentVersion.each { device, version ->
@@ -220,12 +218,12 @@ def prefListDevices() {
                 return dynamicPage(name: "prefListDevices",  title: "Devices", nextPage:nextPage, install:false, uninstall:false) {
                     if (state.doorList) {
                         section("Select which garage door/gate to use"){
-                            input(name: "doors", type: "enum", required:false, multiple:true, metadata:[values:state.doorList])
+                            input(name: "doors", type: "enum", required:false, multiple:true, options:state.doorList)
                         }
                     }
                     if (state.lightList) {
                         section("Select which lights to use"){
-                            input(name: "lights", type: "enum", required:false, multiple:true, metadata:[values:state.lightList])
+                            input(name: "lights", type: "enum", required:false, multiple:true, options:state.lightList)
                         }
                     }
                     section("Advanced (optional)", hideable: true, hidden:true){
@@ -346,14 +344,13 @@ def getVersionInfo(oldVersion, newVersion){
         contentType: 'application/json'
     ]
     def callbackMethod = oldVersion == 'versionCheck' ? 'updateCheck' : 'handleVersionUpdateResponse'
-    asynchttp_v1.get(callbackMethod, params)
+    asynchttpGet(callbackMethod, params)
 }
 
 //When version response received (async), update state with the data
 def handleVersionUpdateResponse(response, data) {
     if (response.hasError()) {
         log.error "Error getting version info: ${response.errorMessage}"
-        sendNotificationEvent("Warning: problem getting MyQ version info: ${response.errorMessage}")
     }
     else {state.latestVersion = response.json}
 }
@@ -375,7 +372,6 @@ def updateVersionMessage(){
 
     //Notify if updates are available
     if (state.versionMsg != ""){
-        sendNotificationEvent(state.versionMsg)
 
         //Send push notification if enabled
         if (prefUpdateNotify){
@@ -387,7 +383,6 @@ def updateVersionMessage(){
                 	return
                 }
             }
-            sendPush(state.versionMsg)
             state.lastVersionNotification = now()
     	}
     }
@@ -471,7 +466,7 @@ def initialize() {
                         state.data[myQDeviceId].child = DNI
                         state.installMsg = state.installMsg + lightName + ": created light device. \r\n\r\n"
                     }
-                    catch(physicalgraph.app.exception.UnknownDeviceTypeException e)
+                    catch(com.hubitat.app.exception.UnknownDeviceTypeException e)
                     {
                         log.debug "Error! " + e
                         state.installMsg = state.installMsg + lightName + ": problem creating light device. Check your IDE to make sure the brbeaird : MyQ Light Controller device handler is installed and published. \r\n\r\n"
@@ -502,7 +497,6 @@ def initialize() {
                 }
                 catch (e)
                 {
-                    sendPush("Warning: unable to delete device: ${child}. You'll need to manually remove it.")
                     log.debug "Error trying to delete device: ${child} - ${e}"
                     log.debug "Device is likely in use in a Routine, or SmartApp (make sure and check Alexa, ActionTiles, etc.)."
                 }
@@ -580,7 +574,7 @@ def createChilDevices(door, sensor, doorName, prefPushButtons){
                     existingDev.deviceType = lockTypeName
                     state.installMsg = state.installMsg + doorName + ": changed door device to lock version." + "\r\n\r\n"
                 }
-                catch(physicalgraph.exception.NotFoundException e)
+                catch(hubitat.exception.NotFoundException e)
                 {
                     log.debug "Error! " + e
                     state.installMsg = state.installMsg + doorName + ": problem changing door to no-sensor type. Check your IDE to make sure the brbeaird : " + lockTypeName + " device handler is installed and published. \r\n\r\n"
@@ -592,7 +586,7 @@ def createChilDevices(door, sensor, doorName, prefPushButtons){
                     existingDev.deviceType = noSensorTypeName
                     state.installMsg = state.installMsg + doorName + ": changed door device to No-sensor version." + "\r\n\r\n"
                 }
-                catch(physicalgraph.exception.NotFoundException e)
+                catch(hubitat.exception.NotFoundException e)
                 {
                     log.debug "Error! " + e
                     state.installMsg = state.installMsg + doorName + ": problem changing door to no-sensor type. Check your IDE to make sure the brbeaird : " + noSensorTypeName + " device handler is installed and published. \r\n\r\n"
@@ -605,7 +599,7 @@ def createChilDevices(door, sensor, doorName, prefPushButtons){
                     existingDev.deviceType = sensorTypeName
                     state.installMsg = state.installMsg + doorName + ": changed door device to sensor version." + "\r\n\r\n"
                 }
-                catch(physicalgraph.exception.NotFoundException e)
+                catch(hubitat.exception.NotFoundException e)
                 {
                     log.debug "Error! " + e
                     state.installMsg = state.installMsg + doorName + ": problem changing door to sensor type. Check your IDE to make sure the brbeaird : " + sensorTypeName + " device handler is installed and published. \r\n\r\n"
@@ -623,7 +617,7 @@ def createChilDevices(door, sensor, doorName, prefPushButtons){
                     childDoor.updateMyQDeviceId(myQDeviceId)
                     state.installMsg = state.installMsg + doorName + ": created lock device \r\n\r\n"
                 }
-                catch(physicalgraph.app.exception.UnknownDeviceTypeException e)
+                catch(com.hubitat.app.exception.UnknownDeviceTypeException e)
                 {
                     log.debug "Error! " + e
                     state.installMsg = state.installMsg + doorName + ": problem creating door device (lock type). Check your IDE to make sure the brbeaird : " + sensorTypeName + " device handler is installed and published. \r\n\r\n"
@@ -638,7 +632,7 @@ def createChilDevices(door, sensor, doorName, prefPushButtons){
                     childDoor.updateMyQDeviceId(myQDeviceId)
                     state.installMsg = state.installMsg + doorName + ": created door device (sensor version) \r\n\r\n"
                 }
-                catch(physicalgraph.app.exception.UnknownDeviceTypeException e)
+                catch(com.hubitat.app.exception.UnknownDeviceTypeException e)
                 {
                     log.debug "Error! " + e
                     state.installMsg = state.installMsg + doorName + ": problem creating door device (sensor type). Check your IDE to make sure the brbeaird : " + sensorTypeName + " device handler is installed and published. \r\n\r\n"
@@ -652,7 +646,7 @@ def createChilDevices(door, sensor, doorName, prefPushButtons){
                     childDoor.updateMyQDeviceId(myQDeviceId)
                     state.installMsg = state.installMsg + doorName + ": created door device (no-sensor version) \r\n\r\n"
                 }
-                catch(physicalgraph.app.exception.UnknownDeviceTypeException e)
+                catch(com.hubitat.app.exception.UnknownDeviceTypeException e)
                 {
                     log.debug "Error! " + e
                     state.installMsg = state.installMsg + doorName + ": problem creating door device (no-sensor type). Check your IDE to make sure the brbeaird : " + noSensorTypeName + " device handler is installed and published. \r\n\r\n"
@@ -671,7 +665,7 @@ def createChilDevices(door, sensor, doorName, prefPushButtons){
                 	state.installMsg = state.installMsg + doorName + ": created push button device. \r\n\r\n"
                 	subscribe(openButton, "momentary.pushed", doorButtonOpenHandler)
                 }
-                catch(physicalgraph.app.exception.UnknownDeviceTypeException e)
+                catch(com.hubitat.app.exception.UnknownDeviceTypeException e)
                 {
                     log.debug "Error! " + e
                     state.installMsg = state.installMsg + doorName + ": problem creating push button device. Check your IDE to make sure the smartthings : Momentary Button Tile device handler is installed and published. \r\n\r\n"
@@ -688,7 +682,7 @@ def createChilDevices(door, sensor, doorName, prefPushButtons){
                     def closeButton = addChildDevice("smartthings", "Momentary Button Tile", door + " Closer", getHubID(), [name: doorName + " Closer", label: doorName + " Closer"])
                     subscribe(closeButton, "momentary.pushed", doorButtonCloseHandler)
                 }
-                catch(physicalgraph.app.exception.UnknownDeviceTypeException e)
+                catch(com.hubitat.app.exception.UnknownDeviceTypeException e)
                 {
                     log.debug "Error! " + e
                 }
@@ -708,7 +702,6 @@ def createChilDevices(door, sensor, doorName, prefPushButtons){
                 try{
                 	deleteChildDevice(it.deviceNetworkId, true)
                 } catch (e){
-                	//sendPush("Warning: unable to delete virtual on/off push button - you'll need to manually remove it.")
                     state.installMsg = state.installMsg + "Warning: unable to delete virtual on/off push button - you'll need to manually remove it. \r\n\r\n"
                     log.debug "Error trying to delete button " + it + " - " + e
                     log.debug "Button  is likely in use in a Routine, or SmartApp (make sure and check SmarTiles!)."
@@ -822,8 +815,7 @@ def doorButtonOpenHandler(evt) {
     }catch(e){
     	def errMsg = "Warning: MyQ Open button command failed - ${e}"
         log.error errMsg
-        sendNotificationEvent(errMsg)
-        if (prefDoorErrorNotify){sendPush(errMsg)}
+
     }
 }
 
@@ -838,8 +830,7 @@ def doorButtonCloseHandler(evt) {
 	}catch(e){
     	def errMsg = "Warning: MyQ Close button command failed - ${e}"
         log.error errMsg
-        sendNotificationEvent(errMsg)
-        if (prefDoorErrorNotify){sendPush(errMsg)}
+
     }
 }
 
@@ -869,7 +860,8 @@ private login() {
 }
 
 private doLogin() {
-    return apiPostLogin("/api/v5/Login", "{\"username\":\"${settings.username}\",\"password\": \"${settings.password}\"}" ) { response ->
+	def result = false
+    apiPostLogin("/api/v5/Login", "{\"username\":\"${settings.username}\",\"password\": \"${settings.password}\"}" ) { response ->
         if (response.data.SecurityToken != null) {
             state.session.securityToken = response.data.SecurityToken
             state.session.expiration = now() + (5*60*1000) // 5 minutes default
@@ -879,20 +871,21 @@ private doLogin() {
                 if (acctResponse.status == 200) {                    
                     state.session.accountId = acctResponse.data.Account.Id
                     log.debug "got accountid ${acctResponse.data.Account.Id}"
-                    return true
+                    result = true
                 }
                 else{
                 	log.warn "Failed to get AccountId, login unsuccessful"
-                    return false
+                    result =  false
                 }
             }
-            return true
+            result = true
         } else {
             log.warn "No security token found, login unsuccessful"
             state.session = [ brandID: 0, brandName: settings.brand, securityToken: null, expiration: 0 ] // Reset token and expiration
-            return false
+            result = false
         }
     }
+	return result
 }
 
 //Get devices listed on your MyQ account
@@ -900,7 +893,7 @@ private getMyQDevices() {
 	state.MyQDataPending = [:]
     state.unsupportedList = []
 
-	apiGet(getDevicesURL(), []) { response ->
+	apiGet(getDevicesURL(), [:]) { response ->
 		if (response.status == 200) {
 			response.data.items.each { device ->
                 // 2 = garage door, 5 = gate, 7 = MyQGarage(no gateway), 9 = commercial door, 17 = Garage Door Opener WGDO
@@ -1004,24 +997,7 @@ private getMyQDevices() {
 }
 
 def getHubID(){
-    def hubs = location.hubs.findAll{ it.type == physicalgraph.device.HubType.PHYSICAL }
-
-    //Try and find a valid hub on the account
-    def chosenHub
-    hubs.each {
-        if (it != null){
-            chosenHub = it
-        }
-    }
-
-    if (chosenHub != null){
-        log.debug "Chosen hub for child devices: ${chosenHub} (${chosenHub.id})"
-        return chosenHub.id
-    }
-    else{
-        log.debug "No physical hubs found. Sending NULL"
-        return null
-    }
+    return 1234
 }
 
 /* API Methods */
@@ -1062,14 +1038,12 @@ private apiGet(apiPath, apiQuery = [], callback = {}) {
         return
     }
     try {        
-        def myHeaders = [        
-        "SecurityToken": state.session.securityToken,
-        "MyQApplicationId": getApiAppID(),
-        "Content-Type": "application/json"
-    ]
+
         //log.debug "API Callout: GET ${getApiURL()}${apiPath} headers: ${getMyQHeaders()}"
+		
         httpGet([ uri: getApiURL(), path: apiPath, headers: getMyQHeaders(), query: apiQuery ]) { response ->            
-            def result = isGoodResponse(response)
+            log.debug "called"
+			def result = isGoodResponse(response)
             log.debug "Got result: ${result}"            
             if (result == 0) {
             	callback(response)
@@ -1087,13 +1061,11 @@ private apiGet(apiPath, apiQuery = [], callback = {}) {
 private apiPut(apiPath, apiBody = [], actionText = "") {
     if (!login()){
         log.error "Unable to complete PUT, login failed"
-        sendNotificationEvent("Warning: MyQ command failed due to bad login.")
-        if (prefDoorErrorNotify){sendPush("Warning: MyQ command failed due to bad login.")}
         return
     }
     try {
         //log.debug "Calling out PUT ${getApiURL()}${apiPath}${apiBody} ${getMyQHeaders()}"
-        httpPut([ uri: getApiURL(), path: apiPath, headers: getMyQHeaders(), body: apiBody ]) { response ->
+        httpPut([ uri: getApiURL(), path: apiPath, contentType: "application/json; charset=utf-8", headers: getMyQHeaders(), body: apiBody ]) { response ->
             def result = isGoodResponse(response)
             if (result == 0) {
             	return
@@ -1104,8 +1076,6 @@ private apiPut(apiPath, apiBody = [], actionText = "") {
         }
     } catch (e)	{
         log.error "API PUT Error: $e"
-        sendNotificationEvent("Warning: MyQ command failed - ${e}")
-        if (prefDoorErrorNotify){sendPush("Warning: MyQ command failed for ${actionText} - ${e}")}
     }
 }
 
@@ -1148,20 +1118,21 @@ def isGoodResponse(response){
 // HTTP POST call (Login)
 private apiPostLogin(apiPath, apiBody = [], callback = {}) {
     try {
+		def result = false
         //log.debug "Logging into ${getApiURL()}/${apiPath} headers: ${getMyQHeaders()}"
         return httpPost([ uri: getApiURL(), path: apiPath, headers: getMyQHeaders(), body: apiBody ]) { response ->
             log.debug "Got LOGIN POST response: STATUS: ${response.status}\n\nDATA: ${response.data}"
             if (response.status == 200) {            	
-                	return callback(response)
+                	result = callback(response)
             } else {
                 log.error "Unknown LOGIN POST status: ${response.status} data: ${response.data}"
             }
-            return false
+            result = false
         }
     } catch (e)	{
         log.warn "API POST Error: $e"
     }
-    return false
+    return result
 }
 
 
@@ -1191,5 +1162,5 @@ def stateCleanup(){
 
 //Available to be called from child devices for special logging
 def notify(message){
-	sendNotificationEvent(message)
+
 }
