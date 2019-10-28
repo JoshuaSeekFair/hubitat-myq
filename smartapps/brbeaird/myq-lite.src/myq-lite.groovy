@@ -30,6 +30,7 @@ definition(
 	author: "Jason Mok/Brian Beaird/Barry Burke",
 	description: "Integrate MyQ with Smartthings",
 	category: "SmartThings Labs",
+	importUrl: "https://raw.githubusercontent.com/dcmeglio/hubitat-myq/master/smartapps/brbeaird/myq-lite.src/myq-lite.groovy",
 	iconUrl:   "https://raw.githubusercontent.com/brbeaird/SmartThings_MyQ/master/icons/myq.png",
 	iconX2Url: "https://raw.githubusercontent.com/brbeaird/SmartThings_MyQ/master/icons/myq@2x.png",
 	iconX3Url: "https://raw.githubusercontent.com/brbeaird/SmartThings_MyQ/master/icons/myq@3x.png"
@@ -100,7 +101,16 @@ def mainPage() {
             paragraph "Tap below to completely uninstall this SmartApp and devices (doors and lamp control devices will be force-removed from automations and SmartApps)"
             href(name: "", title: "",  description: "Tap to Uninstall", required: false, page: "prefUninstall")
         }
+		section("Logging") {
+			paragraph "Enable debug logs? Will be disabled automatically in 30 minutes"
+        	input name: "logEnable", type: "bool", title: "Enable debug logging", defaultValue: true
+		}
     }
+}
+
+def logsOff() {
+    log.warn "debug logging disabled..."
+    device.updateSetting("logEnable", [value: "false", type: "bool"])
 }
 
 def versionCompare(deviceName){
@@ -153,7 +163,7 @@ def prefLogIn(params) {
 }
 
 def loginResultPage(){
-	log.debug "login result next page: ${state.lastPage}"
+	if (logEnable) log.debug "login result next page: ${state.lastPage}"
     if (forceLogin()) {
     	if (state.lastPage == "prefListDevices")
         	return prefListDevices()
@@ -170,7 +180,7 @@ def loginResultPage(){
 }
 
 def prefUninstall() {
-    log.debug "Removing MyQ Devices..."
+    if (logEnable) log.debug "Removing MyQ Devices..."
     def msg = ""
     childDevices.each {
 		try{
@@ -179,7 +189,7 @@ def prefUninstall() {
 
 		}
 		catch (e) {
-			log.debug "Error deleting ${it.deviceNetworkId}: ${e}"
+			if (logEnable) log.debug "Error deleting ${it.deviceNetworkId}: ${e}"
             msg = "There was a problem removing your device(s). Check the IDE logs for details."
 		}
 	}
@@ -289,13 +299,13 @@ def summary() {
     catch (e){
 		def errorLine = "unknown"
         try{
-        	log.debug e.stackTrace
+        	if (logEnable) log.debug e.stackTrace
             def pattern = ( e.stackTrace =~ /groovy.(\d+)./   )
             errorLine = pattern[0][1]
         }
         catch(lineError){}
 
-		log.debug "Error at line number ${errorLine}: ${e}"
+		if (logEnable) log.debug "Error at line number ${errorLine}: ${e}"
         state.installMsg = "There was a problem updating devices:\n ${e}.\nLine number: ${errorLine}\nLast successful step: ${state.lastSuccessfulStep}"
     }
 
@@ -308,10 +318,14 @@ def summary() {
 
 /* Initialization */
 def installed() {
+    log.warn "debug logging is: ${logEnable == true}"
+    if (logEnable) runIn(1800, logsOff)
 }
 
 def updated() {
-	log.debug "MyQ Lite changes saved."
+    log.warn "debug logging is: ${logEnable == true}"
+    if (logEnable) runIn(1800, logsOff)
+	if (logEnable) log.debug "MyQ Lite changes saved."
     unschedule()
     runEvery3Hours(updateVersionInfo)   //Check for new version every 3 hours
 
@@ -389,26 +403,26 @@ def updateVersionMessage(){
 
 
 def uninstall(){
-    log.debug "Removing MyQ Devices..."
+    if (logEnable) log.debug "Removing MyQ Devices..."
     childDevices.each {
 		try{
 			deleteChildDevice(it.deviceNetworkId, true)
 		}
 		catch (e) {
-			log.debug "Error deleting ${it.deviceNetworkId}: ${e}"
+			if (logEnable) log.debug "Error deleting ${it.deviceNetworkId}: ${e}"
 		}
 	}
 }
 
 def uninstalled() {
-	log.debug "MyQ removal complete."
+	if (logEnable) log.debug "MyQ removal complete."
     getVersionInfo(state.previousVersion, 0);
 }
 
 
 def initialize() {
 
-    log.debug "Initializing..."
+    if (logEnable) log.debug "Initializing..."
     state.data = state.MyQDataPending
     state.lastSuccessfulStep = ""
     unsubscribe()
@@ -458,7 +472,7 @@ def initialize() {
                 def childLight = getChildDevice(state.data[light].child)
                 
                 if (!childLight) {
-                    log.debug "Creating child light device: " + light
+                    if (logEnable) log.debug "Creating child light device: " + light
 
                     try{
                         childLight = addChildDevice("brbeaird", "MyQ Light Controller", DNI, getHubID(), ["name": lightName])
@@ -467,15 +481,15 @@ def initialize() {
                     }
                     catch(com.hubitat.app.exception.UnknownDeviceTypeException e)
                     {
-                        log.debug "Error! " + e
+                        if (logEnable) log.debug "Error! " + e
                         state.installMsg = state.installMsg + lightName + ": problem creating light device. Check your IDE to make sure the brbeaird : MyQ Light Controller device handler is installed and published. \r\n\r\n"
                     }
                 }
                 else{
-                    log.debug "Light device already exists: " + lightName
+                    if (logEnable) log.debug "Light device already exists: " + lightName
                     state.installMsg = state.installMsg + lightName + ": light device already exists. \r\n\r\n"
                 }
-                log.debug "Setting ${lightName} status to ${state.data[light].status}"
+                if (logEnable) log.debug "Setting ${lightName} status to ${state.data[light].status}"
                 childLight.updateDeviceStatus(state.data[light].status)
             }
         }
@@ -484,20 +498,20 @@ def initialize() {
 
     // Remove unselected devices
     getChildDevices().each{ child ->
-    	log.debug "Checking ${child} for deletion"
+    	if (logEnable) log.debug "Checking ${child} for deletion"
         def myQDeviceId = child.getMyQDeviceId()
         if (myQDeviceId){
         	if (!(myQDeviceId in state.validatedDoors) && !(myQDeviceId in state.validatedLights)){
             	try{
-                	log.debug "Child ${child} with ID ${myQDeviceId} not found in selected list. Deleting."
+                	if (logEnable) log.debug "Child ${child} with ID ${myQDeviceId} not found in selected list. Deleting."
                     deleteChildDevice(child.deviceNetworkId, true)
-                	log.debug "Removed old device: ${child}"
+                	if (logEnable) log.debug "Removed old device: ${child}"
                     state.installMsg = state.installMsg + "Removed old device: ${child} \r\n\r\n"
                 }
                 catch (e)
                 {
-                    log.debug "Error trying to delete device: ${child} - ${e}"
-                    log.debug "Device is likely in use in a Routine, or SmartApp (make sure and check Alexa, ActionTiles, etc.)."
+                    if (logEnable) log.debug "Error trying to delete device: ${child} - ${e}"
+                    if (logEnable) log.debug "Device is likely in use in a Routine, or SmartApp (make sure and check Alexa, ActionTiles, etc.)."
                 }
             }
         }
@@ -526,24 +540,24 @@ def verifyChildDeviceIds(){
             //Look for a matching entry in MyQ
             state.data.each { myQId, myQData ->
                 if (child.getMyQDeviceId() == myQId){
-                    log.debug "Found matching ID for ${child}"
+                    if (logEnable) log.debug "Found matching ID for ${child}"
                     matchingId = myQId
                 }
 
                 //If no matching ID, try to match on name
                 else if (child.name == myQData.name || child.label == myQData.name){
-                    log.debug "Found matching ID (via name) for ${child}"
+                    if (logEnable) log.debug "Found matching ID (via name) for ${child}"
                     child.updateMyQDeviceId(myQId)	//Update child to new ID
                     matchingId = myQId
                 }
             }
 
-            log.debug "final matchingid for ${child.name} ${matchingId}"
+            if (logEnable) log.debug "final matchingid for ${child.name} ${matchingId}"
             if (matchingId){
                 state.data[matchingId].child = child.deviceNetworkId
             }
             else{
-                log.debug "WARNING: Existing child ${child} does not seem to have a valid MyQID"
+                if (logEnable) log.debug "WARNING: Existing child ${child} does not seem to have a valid MyQID"
             }
         }
     }
@@ -564,61 +578,61 @@ def createChilDevices(door, sensor, doorName, prefPushButtons){
         def existingType = existingDev?.typeName
 
         if (existingDev){
-        	log.debug "Child already exists for " + doorName + ". Sensor name is: " + sensor
+        	if (logEnable) log.debug "Child already exists for " + doorName + ". Sensor name is: " + sensor
             state.installMsg = state.installMsg + doorName + ": door device already exists. \r\n\r\n"
 
             if (prefUseLockType && existingType != lockTypeName){
                 try{
-                    log.debug "Type needs updating to Lock version"
+                    if (logEnable) log.debug "Type needs updating to Lock version"
                     existingDev.deviceType = lockTypeName
                     state.installMsg = state.installMsg + doorName + ": changed door device to lock version." + "\r\n\r\n"
                 }
                 catch(hubitat.exception.NotFoundException e)
                 {
-                    log.debug "Error! " + e
+                    if (logEnable) log.debug "Error! " + e
                     state.installMsg = state.installMsg + doorName + ": problem changing door to no-sensor type. Check your IDE to make sure the brbeaird : " + lockTypeName + " device handler is installed and published. \r\n\r\n"
                 }
             }
             else if ((!sensor) && existingType != noSensorTypeName){
             	try{
-                    log.debug "Type needs updating to no-sensor version"
+                    if (logEnable) log.debug "Type needs updating to no-sensor version"
                     existingDev.deviceType = noSensorTypeName
                     state.installMsg = state.installMsg + doorName + ": changed door device to No-sensor version." + "\r\n\r\n"
                 }
                 catch(hubitat.exception.NotFoundException e)
                 {
-                    log.debug "Error! " + e
+                    if (logEnable) log.debug "Error! " + e
                     state.installMsg = state.installMsg + doorName + ": problem changing door to no-sensor type. Check your IDE to make sure the brbeaird : " + noSensorTypeName + " device handler is installed and published. \r\n\r\n"
                 }
             }
 
             else if (sensor && existingType != sensorTypeName && !prefUseLockType){
             	try{
-                    log.debug "Type needs updating to sensor version"
+                    if (logEnable) log.debug "Type needs updating to sensor version"
                     existingDev.deviceType = sensorTypeName
                     state.installMsg = state.installMsg + doorName + ": changed door device to sensor version." + "\r\n\r\n"
                 }
                 catch(hubitat.exception.NotFoundException e)
                 {
-                    log.debug "Error! " + e
+                    if (logEnable) log.debug "Error! " + e
                     state.installMsg = state.installMsg + doorName + ": problem changing door to sensor type. Check your IDE to make sure the brbeaird : " + sensorTypeName + " device handler is installed and published. \r\n\r\n"
                 }
             }
         }
         else{
-            log.debug "Creating child door device " + door
+            if (logEnable) log.debug "Creating child door device " + door
             def childDoor
 
             if (prefUseLockType){
                 try{
-                    log.debug "Creating door with lock type"
+                    if (logEnable) log.debug "Creating door with lock type"
                     childDoor = addChildDevice("brbeaird", lockTypeName, DNI, getHubID(), ["name": doorName])
                     childDoor.updateMyQDeviceId(myQDeviceId)
                     state.installMsg = state.installMsg + doorName + ": created lock device \r\n\r\n"
                 }
                 catch(com.hubitat.app.exception.UnknownDeviceTypeException e)
                 {
-                    log.debug "Error! " + e
+                    if (logEnable) log.debug "Error! " + e
                     state.installMsg = state.installMsg + doorName + ": problem creating door device (lock type). Check your IDE to make sure the brbeaird : " + sensorTypeName + " device handler is installed and published. \r\n\r\n"
 
                 }
@@ -626,28 +640,28 @@ def createChilDevices(door, sensor, doorName, prefPushButtons){
 
             else if (sensor){
                 try{
-                    log.debug "Creating door with sensor"
+                    if (logEnable) log.debug "Creating door with sensor"
                     childDoor = addChildDevice("brbeaird", sensorTypeName, DNI, getHubID(), ["name": doorName])
                     childDoor.updateMyQDeviceId(myQDeviceId)
                     state.installMsg = state.installMsg + doorName + ": created door device (sensor version) \r\n\r\n"
                 }
                 catch(com.hubitat.app.exception.UnknownDeviceTypeException e)
                 {
-                    log.debug "Error! " + e
+                    if (logEnable) log.debug "Error! " + e
                     state.installMsg = state.installMsg + doorName + ": problem creating door device (sensor type). Check your IDE to make sure the brbeaird : " + sensorTypeName + " device handler is installed and published. \r\n\r\n"
 
                 }
             }
             else{
                 try{
-                    log.debug "Creating door with no sensor"
+                    if (logEnable) log.debug "Creating door with no sensor"
                     childDoor = addChildDevice("brbeaird", noSensorTypeName, DNI, getHubID(), ["name": doorName])
                     childDoor.updateMyQDeviceId(myQDeviceId)
                     state.installMsg = state.installMsg + doorName + ": created door device (no-sensor version) \r\n\r\n"
                 }
                 catch(com.hubitat.app.exception.UnknownDeviceTypeException e)
                 {
-                    log.debug "Error! " + e
+                    if (logEnable) log.debug "Error! " + e
                     state.installMsg = state.installMsg + doorName + ": problem creating door device (no-sensor type). Check your IDE to make sure the brbeaird : " + noSensorTypeName + " device handler is installed and published. \r\n\r\n"
                 }
             }
@@ -666,14 +680,14 @@ def createChilDevices(door, sensor, doorName, prefPushButtons){
                 }
                 catch(com.hubitat.app.exception.UnknownDeviceTypeException e)
                 {
-                    log.debug "Error! " + e
+                    if (logEnable) log.debug "Error! " + e
                     state.installMsg = state.installMsg + doorName + ": problem creating push button device. Check your IDE to make sure the smartthings : Momentary Button Tile device handler is installed and published. \r\n\r\n"
                 }
             }
             else{
             	subscribe(existingOpenButtonDev, "momentary.pushed", doorButtonOpenHandler)
                 state.installMsg = state.installMsg + doorName + ": push button device already exists. Subscription recreated. \r\n\r\n"
-                log.debug "subscribed to button: " + existingOpenButtonDev
+                if (logEnable) log.debug "subscribed to button: " + existingOpenButtonDev
             }
 
             if (!existingCloseButtonDev){
@@ -683,7 +697,7 @@ def createChilDevices(door, sensor, doorName, prefPushButtons){
                 }
                 catch(com.hubitat.app.exception.UnknownDeviceTypeException e)
                 {
-                    log.debug "Error! " + e
+                    if (logEnable) log.debug "Error! " + e
                 }
             }
             else{
@@ -695,15 +709,15 @@ def createChilDevices(door, sensor, doorName, prefPushButtons){
         else{
         	def pushButtonIDs = [door + " Opener", door + " Closer"]
             def devsToDelete = getChildDevices().findAll { pushButtonIDs.contains(it.deviceNetworkId)}
-            log.debug "button devices to delete: " + devsToDelete
+            if (logEnable) log.debug "button devices to delete: " + devsToDelete
 			devsToDelete.each{
-            	log.debug "deleting button: " + it
+            	if (logEnable) log.debug "deleting button: " + it
                 try{
                 	deleteChildDevice(it.deviceNetworkId, true)
                 } catch (e){
                     state.installMsg = state.installMsg + "Warning: unable to delete virtual on/off push button - you'll need to manually remove it. \r\n\r\n"
-                    log.debug "Error trying to delete button " + it + " - " + e
-                    log.debug "Button  is likely in use in a Routine, or SmartApp (make sure and check SmarTiles!)."
+                    if (logEnable) log.debug "Error trying to delete button " + it + " - " + e
+                    if (logEnable) log.debug "Button  is likely in use in a Routine, or SmartApp (make sure and check SmarTiles!)."
                 }
 
             }
@@ -722,7 +736,7 @@ def syncDoorsWithSensors(child){
     //Otherwise, refresh everything
     else{*/
         state.validatedDoors.each { door ->
-        	log.debug "Refreshing ${door} ${state.data[door].child}"
+        	if (logEnable) log.debug "Refreshing ${door} ${state.data[door].child}"
         	if (state.data[door].sensor){
             	updateDoorStatus(state.data[door].child, settings[state.data[door].sensor], '')
             }
@@ -732,14 +746,14 @@ def syncDoorsWithSensors(child){
 
 def updateDoorStatus(doorDNI, sensor, child){
     try{
-        log.debug "Updating door status: ${doorDNI} ${sensor} ${child}"
+        if (logEnable) log.debug "Updating door status: ${doorDNI} ${sensor} ${child}"
 
         if (!sensor){//If we got here somehow without a sensor, bail out
-        	log.debug "Warning: no sensor found for ${doorDNI}"
+        	if (logEnable) log.debug "Warning: no sensor found for ${doorDNI}"
             return 0}
 
 		if (!doorDNI){
-        	log.debug "Invalid doorDNI for sensor ${sensor} ${child}"
+        	if (logEnable) log.debug "Invalid doorDNI for sensor ${sensor} ${child}"
             return 0
         }
 
@@ -755,7 +769,7 @@ def updateDoorStatus(doorDNI, sensor, child){
 
         //If sensor and door are out of sync, update the door
 		if (currentDoorState != currentSensorValue){
-        	log.debug "Updating ${doorName} as ${currentSensorValue} from sensor ${sensor}"
+        	if (logEnable) log.debug "Updating ${doorName} as ${currentSensorValue} from sensor ${sensor}"
             doorToUpdate.updateDeviceStatus(currentSensorValue)
         	doorToUpdate.updateDeviceSensor("${sensor} is ${currentSensorValue}")
 
@@ -775,7 +789,7 @@ def updateDoorStatus(doorDNI, sensor, child){
             }
         }
     }catch (e) {
-        log.debug "Error updating door: ${doorDNI}: ${e}"
+        if (logEnable) log.debug "Error updating door: ${doorDNI}: ${e}"
     }
 }
 
@@ -795,7 +809,7 @@ def refreshAll(evt){
 }
 
 def sensorHandler(evt) {
-    log.debug "Sensor change detected: Event name  " + evt.name + " value: " + evt.value   + " deviceID: " + evt.deviceId
+    if (logEnable) log.debug "Sensor change detected: Event name  " + evt.name + " value: " + evt.value   + " deviceID: " + evt.deviceId
 
     state.validatedDoors.each{ door ->
         if (settings[state.data[door].sensor]?.id?.toInteger() == evt.deviceId)
@@ -805,10 +819,10 @@ def sensorHandler(evt) {
 
 def doorButtonOpenHandler(evt) {
     try{
-        log.debug "Door open button push detected: Event name  " + evt.name + " value: " + evt.value   + " deviceID: " + evt.deviceId + " DNI: " + evt.getDevice().deviceNetworkId
+        if (logEnable) log.debug "Door open button push detected: Event name  " + evt.name + " value: " + evt.value   + " deviceID: " + evt.deviceId + " DNI: " + evt.getDevice().deviceNetworkId
         def myQDeviceId = evt.getDevice().deviceNetworkId.replace(" Opener", "")
         def doorDevice = getChildDevice(state.data[myQDeviceId].child)
-        log.debug "Opening door."
+        if (logEnable) log.debug "Opening door."
         doorDevice.openPrep()
         sendCommand(myQDeviceId, "open")
     }catch(e){
@@ -820,10 +834,10 @@ def doorButtonOpenHandler(evt) {
 
 def doorButtonCloseHandler(evt) {
 	try{
-		log.debug "Door close button push detected: Event name  " + evt.name + " value: " + evt.value   + " deviceID: " + evt.deviceId + " DNI: " + evt.getDevice().deviceNetworkId
+		if (logEnable) log.debug "Door close button push detected: Event name  " + evt.name + " value: " + evt.value   + " deviceID: " + evt.deviceId + " DNI: " + evt.getDevice().deviceNetworkId
         def myQDeviceId = evt.getDevice().deviceNetworkId.replace(" Closer", "")
         def doorDevice = getChildDevice(state.data[myQDeviceId].child)
-        log.debug "Closing door."
+        if (logEnable) log.debug "Closing door."
         doorDevice.closePrep()
         sendCommand(myQDeviceId, "close")
 	}catch(e){
@@ -869,7 +883,7 @@ private doLogin() {
             return apiGet(getAccountIdURL(), [expand: "account"]) { acctResponse ->
                 if (acctResponse.status == 200) {                    
                     state.session.accountId = acctResponse.data.Account.Id
-                    log.debug "got accountid ${acctResponse.data.Account.Id}"
+                    if (logEnable) log.debug "got accountid ${acctResponse.data.Account.Id}"
                     result = true
                 }
                 else{
@@ -898,7 +912,7 @@ private getMyQDevices() {
                 // 2 = garage door, 5 = gate, 7 = MyQGarage(no gateway), 9 = commercial door, 17 = Garage Door Opener WGDO
 				//if (device.MyQDeviceTypeId == 2||device.MyQDeviceTypeId == 5||device.MyQDeviceTypeId == 7||device.MyQDeviceTypeId == 17||device.MyQDeviceTypeId == 9) {
                 if (device.device_family == "garagedoor") {
-					log.debug "Found door: ${device.name}"
+					if (logEnable) log.debug "Found door: ${device.name}"
                     def dni = device.serial_number
 					def description = device.name
                     def doorState = device.state.door_state
@@ -948,12 +962,12 @@ private getMyQDevices() {
 
                     //Ignore any doors with blank descriptions
                     if (description != ''){
-                        log.debug "Got valid door: ${description} type: ${device.device_family} status: ${doorState} type: ${device.device_type}"
+                        if (logEnable) log.debug "Got valid door: ${description} type: ${device.device_family} status: ${doorState} type: ${device.device_type}"
                         //log.debug "Storing door info: " + description + "type: " + device.device_family + " status: " + doorState +  " type: " + device.device_type
                         state.MyQDataPending[dni] = [ status: doorState, lastAction: updatedTime, name: description, typeId: device.MyQDeviceTypeId, typeName: 'door', sensor: '', myQDeviceId: device.serial_number]
                     }
                     else{
-                    	log.debug "Door " + device.MyQDeviceId + " has blank desc field. This is unusual..."
+                    	if (logEnable) log.debug "Door " + device.MyQDeviceId + " has blank desc field. This is unusual..."
                     }
 				}
 
@@ -981,7 +995,7 @@ private getMyQDevices() {
 
                     //Ignore any lights with blank descriptions
                     if (description && description != ''){
-                        log.debug "Got valid light: ${description} type: ${device.device_family} status: ${lightState} type: ${device.device_type}"
+                        if (logEnable) log.debug "Got valid light: ${description} type: ${device.device_family} status: ${lightState} type: ${device.device_type}"
                         state.MyQDataPending[dni] = [ status: lightState, lastAction: updatedTime, name: description, typeName: 'light', type: device.MyQDeviceTypeId, myQDeviceId: device.serial_number ]
                     }
 				}
@@ -1046,7 +1060,7 @@ private apiGet(apiPath, apiQuery = [], callback = {}) {
 		
         httpGet([ uri: getApiURL(), path: apiPath, headers: getMyQHeaders(), query: apiQuery ]) { response ->            
 			def result = isGoodResponse(response)
-            log.debug "Got result: ${result}"            
+            if (logEnable) log.debug "Got result: ${result}"            
             if (result == 0) {
             	callback(response)
             }
@@ -1083,7 +1097,7 @@ private apiPut(apiPath, apiBody = [], actionText = "") {
 
 //Check response and retry login if needed
 def isGoodResponse(response){
-    log.debug "Got response: STATUS: ${response.status}"
+    if (logEnable) log.debug "Got response: STATUS: ${response.status}"
     
     //Good response
     if (response.status == 200 || response.status == 204) {
@@ -1123,7 +1137,7 @@ private apiPostLogin(apiPath, apiBody = [], callback = {}) {
 		def result = false
         //log.debug "Logging into ${getApiURL()}/${apiPath} headers: ${getMyQHeaders()}"
         return httpPost([ uri: getApiURL(), path: apiPath, headers: getMyQHeaders(), body: apiBody ]) { response ->
-            log.debug "Got LOGIN POST response: STATUS: ${response.status}\n\nDATA: ${response.data}"
+            if (logEnable) log.debug "Got LOGIN POST response: STATUS: ${response.status}\n\nDATA: ${response.data}"
             if (response.status == 200) {            	
                 	result = callback(response)
             } else {
