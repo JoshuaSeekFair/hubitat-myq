@@ -18,8 +18,8 @@
  *
  */
 
-String appVersion() { return "3.1.0" }
-String appModified() { return "2019-10-18"}
+String appVersion() { return "3.1.1" }
+String appModified() { return "2019-11-07"}
 String appAuthor() { return "Brian Beaird" }
 String gitBranch() { return "brbeaird" }
 String getAppImg(imgName) 	{ return "https://raw.githubusercontent.com/${gitBranch()}/SmartThings_MyQ/master/icons/$imgName" }
@@ -95,6 +95,9 @@ def mainPage() {
             state.currentVersion.each { device, version ->
             	paragraph title: "", "${device} ${version} (${versionCompare(device)})"
             }
+            href(name: "Release notes", title: "Release notes",
+             required: false,
+             url: "https://github.com/${gitBranch()}/SmartThings_MyQ/blob/master/CHANGELOG.md")
             input "prefUpdateNotify", "bool", required: false, title: "Notify when new version is available"
         }
         section("Uninstall") {
@@ -114,7 +117,9 @@ def logsOff() {
 }
 
 def versionCompare(deviceName){
-    if (!state.currentVersion || !state.latestVersion){return 'checking...'}
+    if (!state.currentVersion || !state.latestVersion || state.latestVersion == [:]){
+        return 'latest'
+    }
     if (state.currentVersion[deviceName] == state.latestVersion[deviceName]){
     	return 'latest'
     }
@@ -324,7 +329,6 @@ def installed() {
 
 def updated() {
     log.warn "debug logging is: ${logEnable == true}"
-    if (logEnable) runIn(1800, logsOff)
 	if (logEnable) log.debug "MyQ Lite changes saved."
     unschedule()
     runEvery3Hours(updateVersionInfo)   //Check for new version every 3 hours
@@ -353,8 +357,19 @@ def getVersionInfo(oldVersion, newVersion){
     state.lastVersionCheck = now()
     log.info "Checking for latest version..."
     def params = [
-        uri:  'http://www.brbeaird.com/getVersion/myq/' + oldVersion + '/' + newVersion,
-        contentType: 'application/json'
+        uri:  'http://www.brbeaird.com/getVersion',
+        contentType: 'application/json',
+        body: [
+        	app: "myq",
+            platform: "ST",
+            prevVersion: oldVersion,
+            currentVersion: newVersion,
+        	sensor: door1Sensor ? true : false,
+            door: state.validatedDoors?.size(),
+            lock: prefUseLock ? true: false,
+            light: state.validatedLights?.size(),
+            button: prefDoor1PushButtons
+        ]
     ]
     def callbackMethod = oldVersion == 'versionCheck' ? 'updateCheck' : 'handleVersionUpdateResponse'
     asynchttpGet(callbackMethod, params)
@@ -362,8 +377,9 @@ def getVersionInfo(oldVersion, newVersion){
 
 //When version response received (async), update state with the data
 def handleVersionUpdateResponse(response, data) {
-    if (response.hasError()) {
+    if (response.hasError() || !response.json?.SmartApp) {
         log.error "Error getting version info: ${response.errorMessage}"
+        state.latestVersion = [:]
     }
     else {state.latestVersion = response.json}
 }
@@ -470,7 +486,7 @@ def initialize() {
                 def DNI = [ app.id, "LightController", myQDeviceId ].join('|')
                 def lightName = state.data[light].name
                 def childLight = getChildDevice(state.data[light].child)
-                
+
                 if (!childLight) {
                     if (logEnable) log.debug "Creating child light device: " + light
 
@@ -674,14 +690,14 @@ def createChilDevices(door, sensor, doorName, prefPushButtons){
             def existingCloseButtonDev = getChildDevice(door + " Closer")
             if (!existingOpenButtonDev){
                 try{
-                	def openButton = addChildDevice("smartthings", "Momentary Button Tile", door + " Opener", getHubID(), [name: doorName + " Opener", label: doorName + " Opener"])
+                	def openButton = addChildDevice("brbeaird", "Momentary Button Tile", door + " Opener", getHubID(), [name: doorName + " Opener", label: doorName + " Opener"])
                 	state.installMsg = state.installMsg + doorName + ": created push button device. \r\n\r\n"
                 	subscribe(openButton, "momentary.pushed", doorButtonOpenHandler)
                 }
                 catch(com.hubitat.app.exception.UnknownDeviceTypeException e)
                 {
                     if (logEnable) log.debug "Error! " + e
-                    state.installMsg = state.installMsg + doorName + ": problem creating push button device. Check your IDE to make sure the smartthings : Momentary Button Tile device handler is installed and published. \r\n\r\n"
+                    state.installMsg = state.installMsg + doorName + ": problem creating push button device. Check your IDE to make sure the brbeaird : Momentary Button Tile device handler is installed and published. \r\n\r\n"
                 }
             }
             else{
@@ -692,7 +708,7 @@ def createChilDevices(door, sensor, doorName, prefPushButtons){
 
             if (!existingCloseButtonDev){
                 try{
-                    def closeButton = addChildDevice("smartthings", "Momentary Button Tile", door + " Closer", getHubID(), [name: doorName + " Closer", label: doorName + " Closer"])
+                    def closeButton = addChildDevice("brbeaird", "Momentary Button Tile", door + " Closer", getHubID(), [name: doorName + " Closer", label: doorName + " Closer"])
                     subscribe(closeButton, "momentary.pushed", doorButtonCloseHandler)
                 }
                 catch(com.hubitat.app.exception.UnknownDeviceTypeException e)
@@ -766,6 +782,7 @@ def updateDoorStatus(doorDNI, sensor, child){
         def currentSensorValue = "unknown"
         currentSensorValue = sensor.latestValue("contact")
         def currentDoorState = doorToUpdate.latestValue("contact")
+        doorToUpdate.updateSensorBattery(sensor.latestValue("battery"))
 
         //If sensor and door are out of sync, update the door
 		if (currentDoorState != currentSensorValue){
@@ -878,10 +895,10 @@ private doLogin() {
         if (response.data.SecurityToken != null) {
             state.session.securityToken = response.data.SecurityToken
             state.session.expiration = now() + (5*60*1000) // 5 minutes default
-            
+
             //Now get account ID
             return apiGet(getAccountIdURL(), [expand: "account"]) { acctResponse ->
-                if (acctResponse.status == 200) {                    
+                if (acctResponse.status == 200) {
                     state.session.accountId = acctResponse.data.Account.Id
                     if (logEnable) log.debug "got accountid ${acctResponse.data.Account.Id}"
                     result = true
@@ -917,9 +934,9 @@ private getMyQDevices() {
 					def description = device.name
                     def doorState = device.state.door_state
                     def updatedTime = device.last_update
-                
-                
-                
+
+
+
                     //def dni = device.MyQDeviceId
 					//def description = ''
                     //def doorState = ''
@@ -977,8 +994,8 @@ private getMyQDevices() {
 					def description = device.name
                     def lightState = device.state.lamp_state
                     def updatedTime = device.state.last_update
-                    
-                    
+
+
                     /*
                     device.Attributes.each {
 
@@ -1057,7 +1074,7 @@ private apiGet(apiPath, apiQuery = [], callback = {}) {
         "Content-Type": "application/json"
     ]
         //log.debug "API Callout: GET ${getApiURL()}${apiPath} headers: ${getMyQHeaders()}"
-		
+
         httpGet([ uri: getApiURL(), path: apiPath, headers: getMyQHeaders(), query: apiQuery ]) { response ->            
 			def result = isGoodResponse(response)
             if (logEnable) log.debug "Got result: ${result}"            
@@ -1088,7 +1105,7 @@ private apiPut(apiPath, apiBody = [], actionText = "") {
             }
             else if (result == 1){
             	apiPut(apiPath, apiBody, callback) // Try again
-            }            
+            }
         }
     } catch (e)	{
         log.error "API PUT Error: $e"
@@ -1104,7 +1121,7 @@ def isGoodResponse(response){
         state.retryCount = 0 // Reset it
         return 0
     }
-    
+
     //Bad token response
     else if(response.status == 401){
     	if (state.retryCount <= MAX_RETRIES) {
@@ -1138,8 +1155,8 @@ private apiPostLogin(apiPath, apiBody = [], callback = {}) {
         //log.debug "Logging into ${getApiURL()}/${apiPath} headers: ${getMyQHeaders()}"
         return httpPost([ uri: getApiURL(), path: apiPath, headers: getMyQHeaders(), body: apiBody ]) { response ->
             if (logEnable) log.debug "Got LOGIN POST response: STATUS: ${response.status}\n\nDATA: ${response.data}"
-            if (response.status == 200) {            	
-                	result = callback(response)
+            if (response.status == 200) {
+                	return callback(response)
             } else {
                 log.error "Unknown LOGIN POST status: ${response.status} data: ${response.data}"
             }

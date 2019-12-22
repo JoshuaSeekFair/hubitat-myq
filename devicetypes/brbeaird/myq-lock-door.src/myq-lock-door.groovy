@@ -25,8 +25,10 @@ metadata {
 		capability "Actuator"		
 		capability "Sensor"
         capability "Lock"
-        capability "Health Check"
-		
+        capability "Battery"
+        //capability "Health Check"
+
+
 		attribute "lastActivity", "string"
         attribute "doorSensor", "string"
         attribute "doorMoving", "string"
@@ -39,6 +41,8 @@ metadata {
         command "updateDeviceMoving", ["string"]
         command "lock"
         command "unlock"
+		command "updateMyQDeviceId", ["string"]
+        command "updateSensorBattery", ["number"]
 	}
 
 	simulator {	}
@@ -235,7 +239,15 @@ def updateDeviceMoving(moving) {
 	sendEvent(name: "doorMoving", value: moving, display: false , displayed: false)
 }
 
-def getMyQDeviceId(){	    
+def log(msg){
+	log.debug msg
+}
+
+def showVersion(){
+	return "3.1.1"
+}
+
+def getMyQDeviceId(){
     if (device.currentState("myQDeviceId")?.value)
     	return device.currentState("myQDeviceId").value
 	else{    	
@@ -245,34 +257,11 @@ def getMyQDeviceId(){
     }	
 }
 
+def updateSensorBattery(batteryValue) {	
+	sendEvent(name: "battery", value: batteryValue, display: true, displayed: true)
+}
+
 def updateMyQDeviceId(Id) {
 	log.debug "Setting MyQID to ${Id}"
     sendEvent(name: "myQDeviceId", value: Id, display: true , displayed: true)
 }
-
-def log(msg){
-	log.debug msg
-}
-
-def showVersion(){
-	return "1.0.0"
-}
-
-/*Experimental settings in preparation for new ST app.
-def installed() {
-	sendEvent(name: "checkInterval", value: 4 * 60 * 60 + 2 * 60, displayed: false, data: [protocol: "cloud", scheme:"untracked"])
-}
-
-def updated() {
-	sendEvent(name: "checkInterval", value: 4 * 60 * 60 + 2 * 60, displayed: false, data: [protocol: "cloud", scheme:"untracked"])
-}
-
-def configure() {
-	sendEvent(name: "checkInterval", value: 4 * 60 * 60 + 2 * 60, displayed: false, data: [protocol: "cloud", scheme:"untracked"])
-}
-
-def ping() {
-    logDebug "ping()"	
-    return refresh()
-}
-*/
